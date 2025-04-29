@@ -50,6 +50,142 @@ const fileContainer = document.getElementById('fileContainer');
 const downloadAllButton = document.getElementById('downloadAll');
 const uploadedFiles = {};
 
+// Audio conversion utilities
+const audioUtils = {
+    // Function to convert audio file to WAV
+    convertToWAV: async function(audioFile) {
+        // If it's already a WAV file, just return the file
+        if (audioFile.name.toLowerCase().endsWith('.wav')) {
+            return audioFile;
+        }
+
+        try {
+            // Get audio data as ArrayBuffer
+            const arrayBuffer = await new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = (e) => resolve(e.target.result);
+                reader.onerror = reject;
+                reader.readAsArrayBuffer(audioFile);
+            });
+
+            // Create audio context
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+            // Decode audio data
+            const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+
+            // Convert to WAV
+            const wavBlob = await this.audioBufferToWAV(audioBuffer);
+
+            // Create a new file object with the WAV data
+            const wavFile = new File([wavBlob],
+                audioFile.name.replace(/\.[^/.]+$/, '.wav'),
+                { type: 'audio/wav' }
+            );
+
+            return wavFile;
+        } catch (error) {
+            console.error('Error converting audio to WAV:', error);
+            // Return original file if conversion fails
+            return audioFile;
+        }
+    },
+
+    // Function to convert AudioBuffer to WAV Blob
+    audioBufferToWAV: function(buffer) {
+        return new Promise(resolve => {
+            const numOfChannels = buffer.numberOfChannels;
+            const sampleRate = buffer.sampleRate;
+            const format = 1; // PCM
+            const bitDepth = 16;
+
+            let result;
+            if (numOfChannels === 2) {
+                result = this.interleave(buffer.getChannelData(0), buffer.getChannelData(1));
+            } else {
+                result = buffer.getChannelData(0);
+            }
+
+            // Convert float32 to int16
+            const volume = 0.8; // Prevent clipping
+            const dataLength = result.length * 2; // 16-bit = 2 bytes
+            const buffer16 = new Int16Array(result.length);
+
+            for (let i = 0; i < result.length; i++) {
+                const s = Math.max(-1, Math.min(1, result[i]));
+                buffer16[i] = s < 0 ? s * 0x8000 * volume : s * 0x7FFF * volume;
+            }
+
+            const dataView = this.writeWAVBytes(buffer16, numOfChannels, sampleRate, format, bitDepth);
+            const blob = new Blob([dataView], { type: 'audio/wav' });
+
+            resolve(blob);
+        });
+    },
+
+    // Function to interleave audio channels
+    interleave: function(leftChannel, rightChannel) {
+        const length = leftChannel.length + rightChannel.length;
+        const result = new Float32Array(length);
+
+        let index = 0;
+        let inputIndex = 0;
+
+        while (index < length) {
+            result[index++] = leftChannel[inputIndex];
+            result[index++] = rightChannel[inputIndex];
+            inputIndex++;
+        }
+
+        return result;
+    },
+
+    // Function to write WAV header and data
+    writeWAVBytes: function(samples, numChannels, sampleRate, format, bitDepth) {
+        const bytesPerSample = bitDepth / 8;
+        const blockAlign = numChannels * bytesPerSample;
+
+        const buffer = new ArrayBuffer(44 + samples.length * bytesPerSample);
+        const view = new DataView(buffer);
+
+        // Write WAV header
+        // "RIFF" chunk descriptor
+        this.writeString(view, 0, 'RIFF');
+        view.setUint32(4, 36 + samples.length * bytesPerSample, true);
+        this.writeString(view, 8, 'WAVE');
+
+        // "fmt " sub-chunk
+        this.writeString(view, 12, 'fmt ');
+        view.setUint32(16, 16, true); // fmt chunk size
+        view.setUint16(20, format, true);
+        view.setUint16(22, numChannels, true);
+        view.setUint32(24, sampleRate, true);
+        view.setUint32(28, sampleRate * blockAlign, true); // byte rate
+        view.setUint16(32, blockAlign, true);
+        view.setUint16(34, bitDepth, true);
+
+        // "data" sub-chunk
+        this.writeString(view, 36, 'data');
+        view.setUint32(40, samples.length * bytesPerSample, true);
+
+        // Write PCM data
+        if (bitDepth === 16) {
+            for (let i = 0; i < samples.length; i++) {
+                view.setInt16(44 + i * bytesPerSample, samples[i], true);
+            }
+        }
+
+        return view;
+    },
+
+    // Function to write a string to a DataView
+    writeString: function(view, offset, string) {
+        for (let i = 0; i < string.length; i++) {
+            view.setUint8(offset + i, string.charCodeAt(i));
+        }
+    }
+};
+
 // Function to create the HTML element for a single audio event
 function createAudioEventElement(file) {
     const fileBox = document.createElement('div');
@@ -220,11 +356,12 @@ function createAudioEventElement(file) {
     });
 
     // Event listener for the single file input
-    fileInputSingle.addEventListener('change', (event) => {
+    fileInputSingle.addEventListener('change', async (event) => {
         const uploadedFile = event.target.files[0];
         if (uploadedFile) {
-            uploadedFiles[`D_${file.name}`] = uploadedFile;
-            uploadedFiles[`F_${file.name}`] = uploadedFile;
+            const wavFile = await audioUtils.convertToWAV(uploadedFile);
+            uploadedFiles[`D_${file.name}`] = wavFile;
+            uploadedFiles[`F_${file.name}`] = wavFile;
         } else {
             // Clear if the user cancels file selection
             delete uploadedFiles[`D_${file.name}`];
@@ -235,10 +372,11 @@ function createAudioEventElement(file) {
     });
 
     // Event listener for the desktop file input
-    fileInputDesktop.addEventListener('change', (event) => {
+    fileInputDesktop.addEventListener('change', async (event) => {
         const uploadedFile = event.target.files[0];
         if (uploadedFile) {
-            uploadedFiles[`D_${file.name}`] = uploadedFile;
+            const wavFile = await audioUtils.convertToWAV(uploadedFile);
+            uploadedFiles[`D_${file.name}`] = wavFile;
         } else {
             delete uploadedFiles[`D_${file.name}`];
         }
@@ -247,10 +385,11 @@ function createAudioEventElement(file) {
     });
 
     // Event listener for the fullscreen file input
-    fileInputFullscreen.addEventListener('change', (event) => {
+    fileInputFullscreen.addEventListener('change', async (event) => {
         const uploadedFile = event.target.files[0];
         if (uploadedFile) {
-            uploadedFiles[`F_${file.name}`] = uploadedFile;
+            const wavFile = await audioUtils.convertToWAV(uploadedFile);
+            uploadedFiles[`F_${file.name}`] = wavFile;
         } else {
             delete uploadedFiles[`F_${file.name}`];
         }
@@ -284,23 +423,126 @@ audioFiles.forEach(file => {
 });
 
 // Event listener for the download button
-downloadAllButton.addEventListener('click', () => {
+downloadAllButton.addEventListener('click', async () => {
+    console.log('Download button clicked - starting process');
+
     // Get pack name from input or use default
     const packNameInput = document.getElementById('packName');
     const packName = packNameInput.value.trim() || 'PlayniteSoundPack';
-    
-    // Generate zip filename
-    const zipFileName = `${packName}.zip`;
-    
-    Object.entries(uploadedFiles).forEach(([fileName, file]) => {
-        const url = URL.createObjectURL(file);
+    console.log(`Using pack name: "${packName}"`);
+
+    // Check if there are any files to download
+    if (Object.keys(uploadedFiles).length === 0) {
+        console.log('No files to download - showing alert');
+        alert('No sound files have been added. Please add at least one sound file before downloading.');
+        return;
+    }
+
+    console.log(`Processing ${Object.keys(uploadedFiles).length} audio files...`);
+
+    // Show spinner in the button
+    const originalButtonContent = downloadAllButton.innerHTML;
+    downloadAllButton.innerHTML = `
+        <svg class="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+        <span class="ml-2">Processing...</span>
+    `;
+    downloadAllButton.disabled = true;
+    downloadAllButton.classList.add('opacity-80', 'cursor-not-allowed');
+    console.log('Download button updated with spinner');
+
+    // Create a processing message
+    const processingDiv = document.createElement('div');
+    processingDiv.className = 'fixed top-0 left-0 w-full h-full flex items-center justify-center bg-black/50 backdrop-blur-sm z-50';
+    processingDiv.innerHTML = `
+        <div class="bg-white/10 rounded-xl p-6 max-w-md text-center">
+            <svg class="animate-spin h-10 w-10 text-blue-400 mx-auto mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <p class="text-white text-lg font-medium">Processing audio files...</p>
+            <p class="text-gray-300 mt-2">Converting all files to WAV format.</p>
+        </div>
+    `;
+    document.body.appendChild(processingDiv);
+    console.log('Added processing overlay to the UI');
+
+    try {
+        console.log('Creating new JSZip instance');
+        // Create a new zip file
+        const zip = new JSZip();
+
+        console.log('Starting to process audio files for the zip');
+        // Add each file to the zip with the correct filename
+        const promises = Object.entries(uploadedFiles).map(async ([fileKey, file], index) => {
+            console.log(`Processing file ${index + 1}/${Object.keys(uploadedFiles).length}: ${fileKey}`);
+
+            // Ensure the file is in WAV format
+            console.log(`Converting ${fileKey} to WAV format (if needed)`);
+            const wavFile = await audioUtils.convertToWAV(file);
+            console.log(`Conversion for ${fileKey} complete`);
+
+            return new Promise((resolve) => {
+                console.log(`Reading file contents for ${fileKey}`);
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    // Create the correct filename for Playnite Sounds Mod with .wav extension
+                    const zipFilename = `${fileKey}.wav`;
+                    console.log(`Adding ${zipFilename} to the zip file`);
+                    // Add the file to the zip
+                    zip.file(zipFilename, e.target.result);
+                    resolve();
+                };
+                reader.readAsArrayBuffer(wavFile);
+            });
+        });
+
+        // Wait for all files to be added to the zip
+        console.log('Waiting for all files to be processed and added to the zip');
+        await Promise.all(promises);
+        console.log('All files have been added to the zip');
+
+        // Generate the zip file
+        console.log('Generating final zip file...');
+        const content = await zip.generateAsync({ type: 'blob' });
+        console.log(`Zip file generated (${(content.size / 1024).toFixed(2)} KB)`);
+
+        // Create download link and trigger download
+        const zipFileName = `${packName}.zip`;
+        console.log(`Creating download link for ${zipFileName}`);
+        const url = URL.createObjectURL(content);
         const a = document.createElement('a');
         a.style.display = 'none';
         a.href = url;
-        a.download = fileName + '.' + file.name.split('.').pop(); // Keep the original file extension
+        a.download = zipFileName;
         document.body.appendChild(a);
+
+        console.log('Triggering download');
         a.click();
-        URL.revokeObjectURL(url);
-        document.body.removeChild(a);
-    });
+
+        // Clean up
+        console.log('Cleaning up temporary objects');
+        setTimeout(() => {
+            URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+            console.log('Download cleanup complete');
+        }, 100);
+
+    } catch (error) {
+        console.error('Error creating zip file:', error);
+        alert('An error occurred while creating the zip file. Please try again.');
+    } finally {
+        console.log('Removing processing overlay');
+        document.body.removeChild(processingDiv);
+
+        // Restore the button to its original state
+        console.log('Restoring download button to original state');
+        downloadAllButton.innerHTML = originalButtonContent;
+        downloadAllButton.disabled = false;
+        downloadAllButton.classList.remove('opacity-80', 'cursor-not-allowed');
+
+        console.log('Download process complete');
+    }
 });

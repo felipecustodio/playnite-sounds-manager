@@ -104,20 +104,20 @@ class ShaderBackground {
                 f += 0.1 * sin(10.0 * uv.x + iTime * 2.0);
                 f += 0.1 * cos(8.0 * uv.y + iTime * 1.5);
                 
-                // Black to orange color scheme
-                vec3 blackColor = vec3(0.02, 0.02, 0.02);  // Very dark black
-                vec3 darkOrange = vec3(0.8, 0.3, 0.0);     // Dark orange
-                vec3 brightOrange = vec3(1.0, 0.5, 0.1);   // Bright orange
+                // Black to orange color scheme (Enhanced Playnite colors)
+                vec3 blackColor = vec3(0.01, 0.01, 0.01);     // Very deep black
+                vec3 darkOrange = vec3(0.9, 0.35, 0.05);      // Rich dark orange  
+                vec3 brightOrange = vec3(1.0, 0.6, 0.15);     // Vibrant orange
                 
                 // Create color mixing based on noise
-                vec3 color = mix(blackColor, darkOrange, smoothstep(0.0, 0.6, f));
-                color = mix(color, brightOrange, smoothstep(0.6, 1.0, f));
+                vec3 color = mix(blackColor, darkOrange, smoothstep(0.0, 0.5, f));
+                color = mix(color, brightOrange, smoothstep(0.5, 0.8, f));
                 
-                // Add some variation
-                color += 0.1 * sin(f * 10.0 + iTime);
+                // Add some subtle variation
+                color += 0.05 * sin(f * 8.0 + iTime * 0.5);
                 
-                // Darken overall for background effect
-                color *= 0.7;
+                // Slightly darken for background effect but keep vibrancy
+                color *= 0.85;
                 
                 gl_FragColor = vec4(color, 1.0);
             }

@@ -25,6 +25,17 @@
             z-index: -1;
         }
 
+        .shader-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(to bottom, rgba(0,0,0,0.1) 0%, rgba(0,0,0,0.3) 100%);
+            z-index: -1;
+            pointer-events: none;
+        }
+
         .card-glass {
             background-color: rgba(255, 255, 255, 0.06);
             border: 1px solid rgba(255, 255, 255, 0.1);
@@ -146,6 +157,7 @@
 </head>
 <body class="min-h-screen text-gray-100">
     <canvas id="shader-canvas"></canvas>
+    <div class="shader-overlay"></div>
     <div class="max-w-6xl mx-auto px-4 py-12 relative">
         <div class="flex items-center justify-center mb-12">
             <img src="assets/playnite-optimized.png" alt="Playnite Logo" class="w-12 h-12 mr-4 drop-shadow-lg">

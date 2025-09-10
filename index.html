@@ -10,37 +10,19 @@
     <style>
         body {
             font-family: 'Inter', sans-serif;
-            background-color: #0E0E10; /* Fallback color while image loads */
+            background-color: #0E0E10; /* Fallback color */
             color: #ECECEC;
             position: relative;
             overflow-x: hidden; /* Prevent horizontal scrolling */
         }
 
-        body::before {
-            content: '';
+        #shader-canvas {
             position: fixed;
             top: 0;
             left: 0;
-            right: 0;
-            bottom: 0;
-            background-image: url('assets/bg-optimized.jpg');
-            background-size: cover;
-            background-position: center;
-            filter: brightness(30%) blur(20px);
+            width: 100%;
+            height: 100%;
             z-index: -1;
-            animation: subtleFloat 60s ease-in-out infinite alternate;
-        }
-
-        @keyframes subtleFloat {
-            0% {
-                transform: scale(1.05) translate(-1%, -1%);
-            }
-            50% {
-                transform: scale(1.1) translate(1%, 1%);
-            }
-            100% {
-                transform: scale(1.05) translate(0%, -1%);
-            }
         }
 
         .card-glass {
@@ -163,6 +145,7 @@
     </script>
 </head>
 <body class="min-h-screen text-gray-100">
+    <canvas id="shader-canvas"></canvas>
     <div class="max-w-6xl mx-auto px-4 py-12 relative">
         <div class="flex items-center justify-center mb-12">
             <img src="assets/playnite-optimized.png" alt="Playnite Logo" class="w-12 h-12 mr-4 drop-shadow-lg">
@@ -231,5 +214,6 @@
         <div id="fileContainer" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"></div>
     </div>
     <script src="index.js"></script>
+    <script src="shader-background.js"></script>
 </body>
 </html>

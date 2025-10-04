@@ -2,8 +2,6 @@
 
 A modern web-based tool for creating custom sound packs for Playnite with the [Playnite Sounds Mod extension](https://github.com/ashpynov/PlayniteSound). This application provides an intuitive interface to upload, convert, and package audio files for all supported Playnite events.
 
-![Playnite Sounds Manager Interface](https://github.com/user-attachments/assets/4a07e65e-7771-4474-8e30-8600014a3d2b)
-
 ## ✨ Features
 
 - **🎵 Multi-Event Support**: Configure sounds for 9 different Playnite events

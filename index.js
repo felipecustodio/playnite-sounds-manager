@@ -49,6 +49,7 @@ const audioFiles = [
 const fileContainer = document.getElementById('fileContainer');
 const downloadAllButton = document.getElementById('downloadAll');
 const previewAllButton = document.getElementById('previewAll');
+const notificationContainer = document.getElementById('notificationContainer');
 const uploadedFiles = {};
 const cardElements = {};
 
@@ -64,6 +65,56 @@ const previewAllStopIcon = `
         <path fill-rule="evenodd" d="M6 5a1 1 0 00-1 1v8a1 1 0 001 1h8a1 1 0 001-1V6a1 1 0 00-1-1H6z" clip-rule="evenodd" />
     </svg>
 `;
+
+function showNotification(message, type = 'info') {
+    if (!notificationContainer) {
+        alert(message);
+        return;
+    }
+
+    const notification = document.createElement('div');
+    notification.className = 'flex items-start gap-3 px-4 py-3 rounded-xl shadow-lg text-sm backdrop-blur-md border transition-opacity duration-300';
+
+    const typeClasses = {
+        info: 'bg-blue-500/20 border-blue-400/40 text-blue-100',
+        success: 'bg-emerald-500/20 border-emerald-400/40 text-emerald-100',
+        warning: 'bg-amber-500/20 border-amber-400/40 text-amber-100',
+        error: 'bg-rose-500/25 border-rose-400/40 text-rose-100'
+    };
+
+    notification.classList.add(typeClasses[type] || typeClasses.info);
+    notification.setAttribute('role', type === 'error' ? 'alert' : 'status');
+    notification.setAttribute('aria-live', type === 'error' ? 'assertive' : 'polite');
+
+    notification.innerHTML = `
+        <div class="flex-1">${message}</div>
+        <button type="button" class="ml-4 text-xs uppercase tracking-wide font-semibold opacity-70 hover:opacity-100 transition" aria-label="Dismiss notification">Dismiss</button>
+    `;
+
+    const dismissButton = notification.querySelector('button');
+    let removeTimeout = setTimeout(removeNotification, 5000);
+
+    function removeNotification() {
+        if (!notification.parentElement) return;
+        notification.classList.add('opacity-0');
+        setTimeout(() => notification.remove(), 250);
+    }
+
+    dismissButton.addEventListener('click', () => {
+        clearTimeout(removeTimeout);
+        removeNotification();
+    });
+
+    notification.addEventListener('mouseenter', () => {
+        clearTimeout(removeTimeout);
+    });
+
+    notification.addEventListener('mouseleave', () => {
+        removeTimeout = setTimeout(removeNotification, 2500);
+    });
+
+    notificationContainer.appendChild(notification);
+}
 
 const previewAllController = {
     isPlaying: false,
@@ -208,13 +259,19 @@ function playPreviewItem(eventName, file) {
         previewAllController.resolveCurrent = finish;
 
         audio.addEventListener('ended', finish, { once: true });
-        audio.addEventListener('error', finish, { once: true });
+        audio.addEventListener('error', () => {
+            showNotification(`Unable to play preview for ${eventName}.`, 'error');
+            finish();
+        }, { once: true });
 
         setCardPreviewing(eventName, true);
 
         const playPromise = audio.play();
         if (playPromise && typeof playPromise.catch === 'function') {
-            playPromise.catch(() => finish());
+            playPromise.catch(() => {
+                showNotification(`Unable to play preview for ${eventName}.`, 'error');
+                finish();
+            });
         }
     });
 }
@@ -232,7 +289,7 @@ async function handlePreviewAllClick(event) {
 
     const queue = buildPreviewQueue();
     if (queue.length === 0) {
-        alert('Add at least one sound file to preview.');
+        showNotification('Add at least one sound file to preview.', 'warning');
         return;
     }
 
@@ -459,6 +516,9 @@ function createAudioEventElement(file) {
 
     const previewIndicator = document.createElement('div');
     previewIndicator.className = 'preview-all-indicator hidden absolute top-4 right-4 px-2 py-1 rounded-lg text-[11px] font-semibold uppercase tracking-wide text-blue-100 backdrop-blur-sm';
+    previewIndicator.setAttribute('aria-label', 'Currently previewing sound');
+    previewIndicator.setAttribute('role', 'status');
+    previewIndicator.setAttribute('aria-live', 'polite');
     previewIndicator.innerHTML = `
         <div class="flex items-center gap-1.5">
             <span class="flex items-center gap-[3px]">
@@ -624,7 +684,13 @@ function createAudioEventElement(file) {
     previewButton.addEventListener('click', () => {
         if (!audioPlayer) return;
         if (audioPlayer.paused) {
-            audioPlayer.play();
+            const playResult = audioPlayer.play();
+            if (playResult && typeof playResult.catch === 'function') {
+                playResult.catch(() => {
+                    previewButton.innerHTML = playIconSvg;
+                    showNotification(`Unable to play preview for ${file.name}.`, 'error');
+                });
+            }
             previewButton.innerHTML = pauseIconSvg;
         } else {
             audioPlayer.pause();
@@ -666,7 +732,7 @@ downloadAllButton.addEventListener('click', async () => {
     // Check if there are any files to download
     if (Object.keys(uploadedFiles).length === 0) {
         console.log('No files to download - showing alert');
-        alert('No sound files have been added. Please add at least one sound file before downloading.');
+        showNotification('No sound files have been added. Please add at least one sound file before downloading.', 'warning');
         return;
     }
 
@@ -764,7 +830,7 @@ downloadAllButton.addEventListener('click', async () => {
 
     } catch (error) {
         console.error('Error creating zip file:', error);
-        alert('An error occurred while creating the zip file. Please try again.');
+        showNotification('An error occurred while creating the zip file. Please try again.', 'error');
     } finally {
         console.log('Removing processing overlay');
         document.body.removeChild(processingDiv);

@@ -507,6 +507,18 @@ function createAudioEventElement(file) {
                 </button>
             </div>
             <p class="text-sm text-gray-300 mb-4 opacity-80">${file.description}</p>
+            <div class="preview-status-region flex items-center justify-center mb-4">
+                <div class="preview-all-indicator hidden backdrop-blur-sm" role="status" aria-live="polite" aria-label="Currently previewing sound">
+                    <div class="flex items-center gap-2">
+                        <span class="flex items-end gap-[3px]" aria-hidden="true">
+                            <span class="preview-wave"></span>
+                            <span class="preview-wave"></span>
+                            <span class="preview-wave"></span>
+                        </span>
+                        <span>Now Playing</span>
+                    </div>
+                </div>
+            </div>
             <div id="fileInputsContainer_${file.name}" class="min-h-[120px]">
                 <div id="fileInputs_${file.name}" class="space-y-3">
                     <div id="singleInput_${file.name}">
@@ -547,23 +559,6 @@ function createAudioEventElement(file) {
     fileBox.querySelectorAll('input[type="file"]').forEach(input => {
         input.className = 'input-file-style block w-full text-xs text-gray-300 cursor-pointer';
     });
-
-    const previewIndicator = document.createElement('div');
-    previewIndicator.className = 'preview-all-indicator hidden absolute top-4 right-4 px-2 py-1 rounded-lg text-[11px] font-semibold uppercase tracking-wide text-blue-100 backdrop-blur-sm';
-    previewIndicator.setAttribute('aria-label', 'Currently previewing sound');
-    previewIndicator.setAttribute('role', 'status');
-    previewIndicator.setAttribute('aria-live', 'polite');
-    previewIndicator.innerHTML = `
-        <div class="flex items-center gap-1.5">
-            <span class="flex items-center gap-[3px]">
-                <span class="preview-wave"></span>
-                <span class="preview-wave"></span>
-                <span class="preview-wave"></span>
-            </span>
-            <span>Previewing</span>
-        </div>
-    `;
-    fileBox.appendChild(previewIndicator);
 
     // Get references to elements
     const sameAudioCheckbox = fileBox.querySelector(`#same_${file.name}`);

@@ -52,10 +52,14 @@
             background-color: rgba(255, 255, 255, 0.08);
         }
 
+        :root {
+            --preview-animation-duration: 1.8s;
+        }
+
         .card-glass.previewing-all {
             border-color: rgba(96, 165, 250, 0.45);
             box-shadow: 0 0 22px rgba(59, 130, 246, 0.28);
-            animation: previewPulse 1.8s ease-in-out infinite;
+            animation: previewPulse var(--preview-animation-duration) ease-in-out infinite;
         }
 
         .card-glass.previewing-all::before {
@@ -65,7 +69,7 @@
             background: linear-gradient(135deg, rgba(59, 130, 246, 0.18), rgba(14, 165, 233, 0.1));
             opacity: 0.35;
             pointer-events: none;
-            animation: previewGlowOverlay 1.8s ease-in-out infinite;
+            animation: previewGlowOverlay var(--preview-animation-duration) ease-in-out infinite;
         }
 
         .input-file-style {
@@ -141,7 +145,7 @@
         }
 
         .glow-button.previewing-active {
-            animation: buttonPulse 1.8s ease-in-out infinite;
+            animation: buttonPulse var(--preview-animation-duration) ease-in-out infinite;
             box-shadow: 0 0 18px rgba(96, 165, 250, 0.4);
         }
 

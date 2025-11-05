@@ -182,6 +182,7 @@ function setCardPreviewing(eventName, isPreviewing) {
 }
 
 function buildPreviewQueue() {
+    // Prioritize desktop audio; if unavailable, use fullscreen audio
     return audioFiles
         .map(file => {
             const candidate = uploadedFiles[`D_${file.name}`] || uploadedFiles[`F_${file.name}`];

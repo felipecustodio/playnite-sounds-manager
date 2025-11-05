@@ -220,6 +220,31 @@
                 opacity: 0.55;
             }
         }
+
+        @media (prefers-reduced-motion: reduce) {
+            .card-glass.previewing-all {
+                animation: none;
+                transform: none;
+                box-shadow: 0 0 22px rgba(59, 130, 246, 0.28);
+            }
+
+            .card-glass.previewing-all::before {
+                animation: none;
+                opacity: 0.35;
+            }
+
+            .glow-button.previewing-active {
+                animation: none;
+                transform: none;
+                box-shadow: 0 0 18px rgba(96, 165, 250, 0.4);
+            }
+
+            .preview-wave {
+                animation: none;
+                transform: scaleY(0.7);
+                opacity: 0.8;
+            }
+        }
     </style>
     <script>
         // Preload background image for smoother experience
@@ -309,7 +334,7 @@
         </div>
 
         <!-- Download button with text input for pack name -->
-        <div id="notificationContainer" class="fixed top-6 right-6 space-y-3 z-50"></div>
+        <div id="notificationContainer" class="fixed top-6 right-6 space-y-3 z-[75]"></div>
 
         <div class="text-center mb-10">
             <div class="flex flex-col md:flex-row md:items-center md:justify-center gap-3 max-w-2xl mx-auto">

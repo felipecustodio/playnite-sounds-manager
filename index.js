@@ -116,6 +116,23 @@ function showNotification(message, type = 'info') {
     notificationContainer.appendChild(notification);
 }
 
+function debounce(fn, delay = 100) {
+    let timeoutId;
+    return function debouncedFunction(...args) {
+        clearTimeout(timeoutId);
+        timeoutId = setTimeout(() => fn.apply(this, args), delay);
+    };
+}
+
+/**
+ * Controller for managing preview-all playback state.
+ * @property {boolean} isPlaying - Whether preview sequence is active
+ * @property {Array} queue - Array of {eventName, file} items to preview
+ * @property {Audio|null} currentAudio - Active audio element
+ * @property {string|null} currentUrl - Object URL for current audio
+ * @property {string|null} currentEvent - Event name being previewed
+ * @property {Function|null} resolveCurrent - Promise resolver for current item
+ */
 const previewAllController = {
     isPlaying: false,
     queue: [],
@@ -136,6 +153,8 @@ function updatePreviewAllAvailability() {
     previewAllButton.disabled = !hasAnyAudio;
     previewAllButton.setAttribute('aria-disabled', String(!hasAnyAudio));
 }
+
+const debouncedUpdatePreviewAllAvailability = debounce(updatePreviewAllAvailability, 100);
 
 function setPreviewAllButtonState(state) {
     if (!previewAllButton) return;
@@ -217,6 +236,10 @@ function stopPreviewAll() {
 
     clearAllCardPreviewing();
     setPreviewAllButtonState('idle');
+    if (previewAllButton) {
+        previewAllButton.disabled = false;
+        previewAllButton.setAttribute('aria-disabled', 'false');
+    }
     updatePreviewAllAvailability();
 }
 
@@ -283,14 +306,21 @@ async function handlePreviewAllClick(event) {
         return;
     }
 
+    previewAllButton.disabled = true;
+    previewAllButton.setAttribute('aria-disabled', 'true');
+
     if (previewAllController.isPlaying) {
         stopPreviewAll();
+        previewAllButton.disabled = false;
+        previewAllButton.setAttribute('aria-disabled', 'false');
         return;
     }
 
     const queue = buildPreviewQueue();
     if (queue.length === 0) {
         showNotification('Add at least one sound file to preview.', 'warning');
+        previewAllButton.disabled = false;
+        previewAllButton.setAttribute('aria-disabled', 'false');
         return;
     }
 
@@ -298,6 +328,9 @@ async function handlePreviewAllClick(event) {
     previewAllController.queue = queue;
     setPreviewAllButtonState('playing');
     clearAllCardPreviewing();
+
+    previewAllButton.disabled = false;
+    previewAllButton.setAttribute('aria-disabled', 'false');
 
     for (const item of queue) {
         if (!previewAllController.isPlaying) {
@@ -593,7 +626,7 @@ function createAudioEventElement(file) {
             currentPreviewFile = null;
         }
 
-        updatePreviewAllAvailability();
+        debouncedUpdatePreviewAllAvailability();
     }
 
     // Event listener for the checkbox - INVERTED LOGIC
@@ -639,46 +672,36 @@ function createAudioEventElement(file) {
         updateFileNameDisplays(); // Update filename display
     });
 
-    // Event listener for the single file input
-    fileInputSingle.addEventListener('change', async (event) => {
+    async function handleFileInput(event, fileKeys) {
         const uploadedFile = event.target.files[0];
         if (uploadedFile) {
             const wavFile = await audioUtils.convertToWAV(uploadedFile);
-            uploadedFiles[`D_${file.name}`] = wavFile;
-            uploadedFiles[`F_${file.name}`] = wavFile;
+            fileKeys.forEach(key => {
+                uploadedFiles[key] = wavFile;
+            });
         } else {
-            // Clear if the user cancels file selection
-            delete uploadedFiles[`D_${file.name}`];
-            delete uploadedFiles[`F_${file.name}`];
+            fileKeys.forEach(key => {
+                delete uploadedFiles[key];
+            });
         }
+
         updatePreviewButton();
-        updateFileNameDisplays(); // Update filename display
+        updateFileNameDisplays();
+    }
+
+    // Event listener for the single file input
+    fileInputSingle.addEventListener('change', (event) => {
+        handleFileInput(event, [`D_${file.name}`, `F_${file.name}`]);
     });
 
     // Event listener for the desktop file input
-    fileInputDesktop.addEventListener('change', async (event) => {
-        const uploadedFile = event.target.files[0];
-        if (uploadedFile) {
-            const wavFile = await audioUtils.convertToWAV(uploadedFile);
-            uploadedFiles[`D_${file.name}`] = wavFile;
-        } else {
-            delete uploadedFiles[`D_${file.name}`];
-        }
-        updatePreviewButton();
-        updateFileNameDisplays(); // Update filename display
+    fileInputDesktop.addEventListener('change', (event) => {
+        handleFileInput(event, [`D_${file.name}`]);
     });
 
     // Event listener for the fullscreen file input
-    fileInputFullscreen.addEventListener('change', async (event) => {
-        const uploadedFile = event.target.files[0];
-        if (uploadedFile) {
-            const wavFile = await audioUtils.convertToWAV(uploadedFile);
-            uploadedFiles[`F_${file.name}`] = wavFile;
-        } else {
-            delete uploadedFiles[`F_${file.name}`];
-        }
-        updatePreviewButton();
-        updateFileNameDisplays(); // Update filename display
+    fileInputFullscreen.addEventListener('change', (event) => {
+        handleFileInput(event, [`F_${file.name}`]);
     });
 
     // Event listener for the preview button
@@ -754,7 +777,7 @@ downloadAllButton.addEventListener('click', async () => {
 
     // Create a processing message
     const processingDiv = document.createElement('div');
-    processingDiv.className = 'fixed top-0 left-0 w-full h-full flex items-center justify-center bg-black/50 backdrop-blur-sm z-50';
+    processingDiv.className = 'fixed top-0 left-0 w-full h-full flex items-center justify-center bg-black/50 backdrop-blur-sm z-[90]';
     processingDiv.innerHTML = `
         <div class="bg-white/10 rounded-xl p-6 max-w-md text-center">
             <svg class="animate-spin h-10 w-10 text-blue-400 mx-auto mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">

@@ -48,7 +48,303 @@ const audioFiles = [
 
 const fileContainer = document.getElementById('fileContainer');
 const downloadAllButton = document.getElementById('downloadAll');
+const previewAllButton = document.getElementById('previewAll');
+const notificationContainer = document.getElementById('notificationContainer');
 const uploadedFiles = {};
+const cardElements = {};
+
+const previewAllPlayIcon = `
+    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+        <path fill-rule="evenodd" d="M4.5 4.5a1 1 0 011-1h2.036a1 1 0 01.832.445l1.3 1.942H15.5a1 1 0 011 1V9h-2V7.887H9.847a1 1 0 01-.832-.445L7.715 5.5H5.5V15h3v2h-3a1 1 0 01-1-1v-11z" clip-rule="evenodd" />
+        <path d="M12 12.5a.5.5 0 01.79-.407l2.5 1.833a.5.5 0 010 .814l-2.5 1.833A.5.5 0 0112 16.166V12.5z" />
+    </svg>
+`;
+
+const previewAllStopIcon = `
+    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+        <path fill-rule="evenodd" d="M6 5a1 1 0 00-1 1v8a1 1 0 001 1h8a1 1 0 001-1V6a1 1 0 00-1-1H6z" clip-rule="evenodd" />
+    </svg>
+`;
+
+function showNotification(message, type = 'info') {
+    if (!notificationContainer) {
+        alert(message);
+        return;
+    }
+
+    const notification = document.createElement('div');
+    notification.className = 'flex items-start gap-3 px-4 py-3 rounded-xl shadow-lg text-sm backdrop-blur-md border transition-opacity duration-300';
+
+    const typeClasses = {
+        info: 'bg-blue-500/20 border-blue-400/40 text-blue-100',
+        success: 'bg-emerald-500/20 border-emerald-400/40 text-emerald-100',
+        warning: 'bg-amber-500/20 border-amber-400/40 text-amber-100',
+        error: 'bg-rose-500/25 border-rose-400/40 text-rose-100'
+    };
+
+    notification.classList.add(typeClasses[type] || typeClasses.info);
+    notification.setAttribute('role', type === 'error' ? 'alert' : 'status');
+    notification.setAttribute('aria-live', type === 'error' ? 'assertive' : 'polite');
+
+    notification.innerHTML = `
+        <div class="flex-1">${message}</div>
+        <button type="button" class="ml-4 text-xs uppercase tracking-wide font-semibold opacity-70 hover:opacity-100 transition" aria-label="Dismiss notification">Dismiss</button>
+    `;
+
+    const dismissButton = notification.querySelector('button');
+    let removeTimeout = setTimeout(removeNotification, 5000);
+
+    function removeNotification() {
+        if (!notification.parentElement) return;
+        notification.classList.add('opacity-0');
+        setTimeout(() => notification.remove(), 250);
+    }
+
+    dismissButton.addEventListener('click', () => {
+        clearTimeout(removeTimeout);
+        removeNotification();
+    });
+
+    notification.addEventListener('mouseenter', () => {
+        clearTimeout(removeTimeout);
+    });
+
+    notification.addEventListener('mouseleave', () => {
+        removeTimeout = setTimeout(removeNotification, 2500);
+    });
+
+    notificationContainer.appendChild(notification);
+}
+
+function debounce(fn, delay = 100) {
+    let timeoutId;
+    return function debouncedFunction(...args) {
+        clearTimeout(timeoutId);
+        timeoutId = setTimeout(() => fn.apply(this, args), delay);
+    };
+}
+
+/**
+ * Controller for managing preview-all playback state.
+ * @property {boolean} isPlaying - Whether preview sequence is active
+ * @property {Array} queue - Array of {eventName, file} items to preview
+ * @property {Audio|null} currentAudio - Active audio element
+ * @property {string|null} currentUrl - Object URL for current audio
+ * @property {string|null} currentEvent - Event name being previewed
+ * @property {Function|null} resolveCurrent - Promise resolver for current item
+ */
+const previewAllController = {
+    isPlaying: false,
+    queue: [],
+    currentAudio: null,
+    currentUrl: null,
+    currentEvent: null,
+    resolveCurrent: null
+};
+
+function updatePreviewAllAvailability() {
+    if (!previewAllButton) return;
+    const hasAnyAudio = audioFiles.some(file => uploadedFiles[`D_${file.name}`] || uploadedFiles[`F_${file.name}`]);
+
+    if (!hasAnyAudio && previewAllController.isPlaying) {
+        stopPreviewAll();
+    }
+
+    previewAllButton.disabled = !hasAnyAudio;
+    previewAllButton.setAttribute('aria-disabled', String(!hasAnyAudio));
+}
+
+const debouncedUpdatePreviewAllAvailability = debounce(updatePreviewAllAvailability, 100);
+
+function setPreviewAllButtonState(state) {
+    if (!previewAllButton) return;
+    if (state === 'playing') {
+        previewAllButton.innerHTML = `${previewAllStopIcon}<span>Stop Preview</span>`;
+        previewAllButton.classList.add('previewing-active');
+        previewAllButton.setAttribute('aria-pressed', 'true');
+    } else {
+        previewAllButton.innerHTML = `${previewAllPlayIcon}<span>Preview All Sounds</span>`;
+        previewAllButton.classList.remove('previewing-active');
+        previewAllButton.setAttribute('aria-pressed', 'false');
+    }
+}
+
+function clearAllCardPreviewing() {
+    Object.values(cardElements).forEach(card => {
+        card.classList.remove('previewing-all');
+        const indicator = card.querySelector('.preview-all-indicator');
+        if (indicator) {
+            indicator.classList.add('hidden');
+        }
+        const previewButtonElement = card.querySelector('.preview-button');
+        if (previewButtonElement) {
+            previewButtonElement.classList.remove('animate-pulse');
+        }
+    });
+}
+
+function setCardPreviewing(eventName, isPreviewing) {
+    const card = cardElements[eventName];
+    if (!card) return;
+
+    card.classList.toggle('previewing-all', isPreviewing);
+
+    const indicator = card.querySelector('.preview-all-indicator');
+    if (indicator) {
+        indicator.classList.toggle('hidden', !isPreviewing);
+    }
+
+    const previewButtonElement = card.querySelector('.preview-button');
+    if (previewButtonElement) {
+        previewButtonElement.classList.toggle('animate-pulse', isPreviewing);
+    }
+}
+
+function buildPreviewQueue() {
+    // Prioritize desktop audio; if unavailable, use fullscreen audio
+    return audioFiles
+        .map(file => {
+            const candidate = uploadedFiles[`D_${file.name}`] || uploadedFiles[`F_${file.name}`];
+            if (!candidate) return null;
+            return { eventName: file.name, file: candidate };
+        })
+        .filter(Boolean);
+}
+
+function stopPreviewAll() {
+    previewAllController.isPlaying = false;
+
+    if (previewAllController.currentAudio) {
+        previewAllController.currentAudio.pause();
+        previewAllController.currentAudio.currentTime = 0;
+    }
+
+    if (typeof previewAllController.resolveCurrent === 'function') {
+        const resolver = previewAllController.resolveCurrent;
+        previewAllController.resolveCurrent = null;
+        resolver();
+    }
+
+    if (previewAllController.currentUrl) {
+        URL.revokeObjectURL(previewAllController.currentUrl);
+        previewAllController.currentUrl = null;
+    }
+
+    previewAllController.currentAudio = null;
+    previewAllController.currentEvent = null;
+    previewAllController.queue = [];
+
+    clearAllCardPreviewing();
+    setPreviewAllButtonState('idle');
+    if (previewAllButton) {
+        previewAllButton.disabled = false;
+        previewAllButton.setAttribute('aria-disabled', 'false');
+    }
+    updatePreviewAllAvailability();
+}
+
+function playPreviewItem(eventName, file) {
+    return new Promise(resolve => {
+        if (!previewAllController.isPlaying) {
+            resolve();
+            return;
+        }
+
+        const objectUrl = URL.createObjectURL(file);
+        const audio = new Audio(objectUrl);
+
+        previewAllController.currentAudio = audio;
+        previewAllController.currentUrl = objectUrl;
+        previewAllController.currentEvent = eventName;
+
+        let resolved = false;
+
+        const finish = () => {
+            if (resolved) return;
+            resolved = true;
+
+            setCardPreviewing(eventName, false);
+
+            audio.pause();
+            audio.currentTime = 0;
+
+            URL.revokeObjectURL(objectUrl);
+
+            if (previewAllController.currentAudio === audio) {
+                previewAllController.currentAudio = null;
+                previewAllController.currentUrl = null;
+                previewAllController.currentEvent = null;
+            }
+
+            previewAllController.resolveCurrent = null;
+            resolve();
+        };
+
+        previewAllController.resolveCurrent = finish;
+
+        audio.addEventListener('ended', finish, { once: true });
+        audio.addEventListener('error', () => {
+            showNotification(`Unable to play preview for ${eventName}.`, 'error');
+            finish();
+        }, { once: true });
+
+        setCardPreviewing(eventName, true);
+
+        const playPromise = audio.play();
+        if (playPromise && typeof playPromise.catch === 'function') {
+            playPromise.catch(() => {
+                showNotification(`Unable to play preview for ${eventName}.`, 'error');
+                finish();
+            });
+        }
+    });
+}
+
+async function handlePreviewAllClick(event) {
+    if (event) event.preventDefault();
+    if (!previewAllButton || previewAllButton.disabled) {
+        return;
+    }
+
+    previewAllButton.disabled = true;
+    previewAllButton.setAttribute('aria-disabled', 'true');
+
+    if (previewAllController.isPlaying) {
+        stopPreviewAll();
+        previewAllButton.disabled = false;
+        previewAllButton.setAttribute('aria-disabled', 'false');
+        return;
+    }
+
+    const queue = buildPreviewQueue();
+    if (queue.length === 0) {
+        showNotification('Add at least one sound file to preview.', 'warning');
+        previewAllButton.disabled = false;
+        previewAllButton.setAttribute('aria-disabled', 'false');
+        return;
+    }
+
+    previewAllController.isPlaying = true;
+    previewAllController.queue = queue;
+    setPreviewAllButtonState('playing');
+    clearAllCardPreviewing();
+
+    previewAllButton.disabled = false;
+    previewAllButton.setAttribute('aria-disabled', 'false');
+
+    for (const item of queue) {
+        if (!previewAllController.isPlaying) {
+            break;
+        }
+        await playPreviewItem(item.eventName, item.file);
+    }
+
+    if (previewAllController.isPlaying) {
+        previewAllController.isPlaying = false;
+    }
+
+    stopPreviewAll();
+}
 
 // Audio conversion utilities
 const audioUtils = {
@@ -193,6 +489,8 @@ function createAudioEventElement(file) {
     let audioPlayer = null; // To hold the audio element for preview
     let currentPreviewFile = null; // To track which file is loaded in the player
 
+    fileBox.dataset.eventName = file.name;
+
     fileBox.innerHTML = `
         <div>
             <div class="flex justify-between items-center mb-3">
@@ -249,6 +547,23 @@ function createAudioEventElement(file) {
     fileBox.querySelectorAll('input[type="file"]').forEach(input => {
         input.className = 'input-file-style block w-full text-xs text-gray-300 cursor-pointer';
     });
+
+    const previewIndicator = document.createElement('div');
+    previewIndicator.className = 'preview-all-indicator hidden absolute top-4 right-4 px-2 py-1 rounded-lg text-[11px] font-semibold uppercase tracking-wide text-blue-100 backdrop-blur-sm';
+    previewIndicator.setAttribute('aria-label', 'Currently previewing sound');
+    previewIndicator.setAttribute('role', 'status');
+    previewIndicator.setAttribute('aria-live', 'polite');
+    previewIndicator.innerHTML = `
+        <div class="flex items-center gap-1.5">
+            <span class="flex items-center gap-[3px]">
+                <span class="preview-wave"></span>
+                <span class="preview-wave"></span>
+                <span class="preview-wave"></span>
+            </span>
+            <span>Previewing</span>
+        </div>
+    `;
+    fileBox.appendChild(previewIndicator);
 
     // Get references to elements
     const sameAudioCheckbox = fileBox.querySelector(`#same_${file.name}`);
@@ -310,6 +625,8 @@ function createAudioEventElement(file) {
             audioPlayer = null;
             currentPreviewFile = null;
         }
+
+        debouncedUpdatePreviewAllAvailability();
     }
 
     // Event listener for the checkbox - INVERTED LOGIC
@@ -355,53 +672,49 @@ function createAudioEventElement(file) {
         updateFileNameDisplays(); // Update filename display
     });
 
-    // Event listener for the single file input
-    fileInputSingle.addEventListener('change', async (event) => {
+    async function handleFileInput(event, fileKeys) {
         const uploadedFile = event.target.files[0];
         if (uploadedFile) {
             const wavFile = await audioUtils.convertToWAV(uploadedFile);
-            uploadedFiles[`D_${file.name}`] = wavFile;
-            uploadedFiles[`F_${file.name}`] = wavFile;
+            fileKeys.forEach(key => {
+                uploadedFiles[key] = wavFile;
+            });
         } else {
-            // Clear if the user cancels file selection
-            delete uploadedFiles[`D_${file.name}`];
-            delete uploadedFiles[`F_${file.name}`];
+            fileKeys.forEach(key => {
+                delete uploadedFiles[key];
+            });
         }
+
         updatePreviewButton();
-        updateFileNameDisplays(); // Update filename display
+        updateFileNameDisplays();
+    }
+
+    // Event listener for the single file input
+    fileInputSingle.addEventListener('change', (event) => {
+        handleFileInput(event, [`D_${file.name}`, `F_${file.name}`]);
     });
 
     // Event listener for the desktop file input
-    fileInputDesktop.addEventListener('change', async (event) => {
-        const uploadedFile = event.target.files[0];
-        if (uploadedFile) {
-            const wavFile = await audioUtils.convertToWAV(uploadedFile);
-            uploadedFiles[`D_${file.name}`] = wavFile;
-        } else {
-            delete uploadedFiles[`D_${file.name}`];
-        }
-        updatePreviewButton();
-        updateFileNameDisplays(); // Update filename display
+    fileInputDesktop.addEventListener('change', (event) => {
+        handleFileInput(event, [`D_${file.name}`]);
     });
 
     // Event listener for the fullscreen file input
-    fileInputFullscreen.addEventListener('change', async (event) => {
-        const uploadedFile = event.target.files[0];
-        if (uploadedFile) {
-            const wavFile = await audioUtils.convertToWAV(uploadedFile);
-            uploadedFiles[`F_${file.name}`] = wavFile;
-        } else {
-            delete uploadedFiles[`F_${file.name}`];
-        }
-        updatePreviewButton();
-        updateFileNameDisplays(); // Update filename display
+    fileInputFullscreen.addEventListener('change', (event) => {
+        handleFileInput(event, [`F_${file.name}`]);
     });
 
     // Event listener for the preview button
     previewButton.addEventListener('click', () => {
         if (!audioPlayer) return;
         if (audioPlayer.paused) {
-            audioPlayer.play();
+            const playResult = audioPlayer.play();
+            if (playResult && typeof playResult.catch === 'function') {
+                playResult.catch(() => {
+                    previewButton.innerHTML = playIconSvg;
+                    showNotification(`Unable to play preview for ${file.name}.`, 'error');
+                });
+            }
             previewButton.innerHTML = pauseIconSvg;
         } else {
             audioPlayer.pause();
@@ -412,6 +725,7 @@ function createAudioEventElement(file) {
 
     // Initial setup for filename display
     updateFileNameDisplays();
+    updatePreviewAllAvailability();
 
     return fileBox;
 }
@@ -420,7 +734,15 @@ function createAudioEventElement(file) {
 audioFiles.forEach(file => {
     const fileElement = createAudioEventElement(file);
     fileContainer.appendChild(fileElement);
+    cardElements[file.name] = fileElement;
 });
+
+setPreviewAllButtonState('idle');
+updatePreviewAllAvailability();
+
+if (previewAllButton) {
+    previewAllButton.addEventListener('click', handlePreviewAllClick);
+}
 
 // Event listener for the download button
 downloadAllButton.addEventListener('click', async () => {
@@ -434,7 +756,7 @@ downloadAllButton.addEventListener('click', async () => {
     // Check if there are any files to download
     if (Object.keys(uploadedFiles).length === 0) {
         console.log('No files to download - showing alert');
-        alert('No sound files have been added. Please add at least one sound file before downloading.');
+        showNotification('No sound files have been added. Please add at least one sound file before downloading.', 'warning');
         return;
     }
 
@@ -455,7 +777,7 @@ downloadAllButton.addEventListener('click', async () => {
 
     // Create a processing message
     const processingDiv = document.createElement('div');
-    processingDiv.className = 'fixed top-0 left-0 w-full h-full flex items-center justify-center bg-black/50 backdrop-blur-sm z-50';
+    processingDiv.className = 'fixed top-0 left-0 w-full h-full flex items-center justify-center bg-black/50 backdrop-blur-sm z-[90]';
     processingDiv.innerHTML = `
         <div class="bg-white/10 rounded-xl p-6 max-w-md text-center">
             <svg class="animate-spin h-10 w-10 text-blue-400 mx-auto mb-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
@@ -532,7 +854,7 @@ downloadAllButton.addEventListener('click', async () => {
 
     } catch (error) {
         console.error('Error creating zip file:', error);
-        alert('An error occurred while creating the zip file. Please try again.');
+        showNotification('An error occurred while creating the zip file. Please try again.', 'error');
     } finally {
         console.log('Removing processing overlay');
         document.body.removeChild(processingDiv);
